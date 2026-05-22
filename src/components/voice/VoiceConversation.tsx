@@ -21,6 +21,7 @@ export function VoiceConversation({
 }: VoiceConversationProps) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
+  const entriesRef = useRef<TranscriptEntry[]>([]);
   const [isEmmaSpeaking, setIsEmmaSpeaking] = useState(false);
   const clientRef = useRef<VoiceClient | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -253,6 +254,8 @@ export function VoiceConversation({
 
   const handleStop = useCallback(() => {
     const currentSessionId = sessionIdRef.current;
+    const currentEntries = entriesRef.current;
+
     clientRef.current?.disconnect();
     clientRef.current = null;
     playbackQueueRef.current = [];
@@ -260,14 +263,32 @@ export function VoiceConversation({
     setIsEmmaSpeaking(false);
 
     if (currentSessionId) {
+      const sentencesSpoken = currentEntries.filter((e) => e.role === "user").length;
+      const mistakesCount = currentEntries.filter((e) => e.correction).length;
+      const correctionsAccepted = mistakesCount;
+
       fetch("/api/session/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: currentSessionId }),
       }).catch(() => {});
+
+      if (sentencesSpoken > 0) {
+        fetch("/api/progress", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sentencesSpoken,
+            mistakesCount,
+            correctionsAccepted,
+            targetLanguage,
+          }),
+        }).catch(() => {});
+      }
+
       sessionIdRef.current = null;
     }
-  }, []);
+  }, [targetLanguage]);
 
   return (
     <div className="flex h-full flex-col">
