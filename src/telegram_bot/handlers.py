@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -89,7 +90,7 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "target_language": user.target_language,
         }
 
-        response = agent.run(text)
+        response = await asyncio.to_thread(agent.run, text)
         emma_text = response.content
 
         await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
