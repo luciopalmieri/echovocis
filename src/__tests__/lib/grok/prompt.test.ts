@@ -42,4 +42,18 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt).toContain("No previous mistakes recorded");
   });
+
+  it("mentions all four tools in MEMORY TOOLS section", () => {
+    const prompt = buildSystemPrompt({
+      nativeLanguage: "it",
+      targetLanguage: "en",
+      recentMistakes: [],
+      sessionCount: 0,
+    });
+
+    expect(prompt).toContain("save_mistake");
+    expect(prompt).toContain("save_progress");
+    expect(prompt).toContain("generate_exercise");
+    expect(prompt).toContain("get_user_history");
+  });
 });

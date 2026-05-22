@@ -27,9 +27,11 @@ export function VoiceConversation({
   const playbackQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
   const currentEmmaTextRef = useRef("");
+  const currentEmmaIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingToken, setIsLoadingToken] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
+  const onCorrectionRef = useRef<(original: string, corrected: string, type: string) => void>(() => {});
 
   const playNextChunkRef = useRef<() => void>(() => {});
 
@@ -83,6 +85,13 @@ export function VoiceConversation({
               body: JSON.stringify(payload),
             });
             const data = await res.json();
+            if (res.ok) {
+              onCorrectionRef.current(
+                args.original as string,
+                args.corrected as string,
+                args.type as string
+              );
+            }
             return JSON.stringify(data);
           }
 
@@ -192,23 +201,47 @@ export function VoiceConversation({
         },
         onEmmaText: (text) => {
           currentEmmaTextRef.current = text;
-        },
-        onEmmaAudio: handleEmmaAudio,
-        onCorrection: (original, corrected, type) => {
           setEntries((prev) => {
-            const lastEmma = [...prev].reverse().find((e) => e.role === "emma");
-            if (lastEmma) {
+            if (currentEmmaIdRef.current) {
               return prev.map((e) =>
-                e.id === lastEmma.id
-                  ? { ...e, correction: { original, corrected, type } }
-                  : e
+                e.id === currentEmmaIdRef.current ? { ...e, text } : e
               );
             }
-            return prev;
+            const id = `emma-${Date.now()}`;
+            currentEmmaIdRef.current = id;
+            return [...prev, { id, role: "emma" as const, text }];
           });
         },
+        onEmmaDone: () => {
+          currentEmmaIdRef.current = null;
+        },
+        onEmmaAudio: handleEmmaAudio,
+        onCorrection: () => {},
         onFunctionCall: handleFunctionCall,
       });
+
+      onCorrectionRef.current = (original, corrected, type) => {
+        setEntries((prev) => {
+          const lastEmma = [...prev].reverse().find((e) => e.role === "emma");
+          if (lastEmma) {
+            return prev.map((e) =>
+              e.id === lastEmma.id
+                ? { ...e, correction: { original, corrected, type } }
+                : e
+            );
+          }
+          const id = `emma-${Date.now()}`;
+          return [
+            ...prev,
+            {
+              id,
+              role: "emma" as const,
+              text: "",
+              correction: { original, corrected, type },
+            },
+          ];
+        });
+      };
 
       clientRef.current = client;
       await client.connect();

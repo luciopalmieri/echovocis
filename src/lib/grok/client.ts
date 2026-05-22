@@ -18,6 +18,7 @@ export interface VoiceClientConfig {
   onStatusChange: (status: ConnectionStatus) => void;
   onUserTranscript: (text: string) => void;
   onEmmaText: (text: string) => void;
+  onEmmaDone: () => void;
   onEmmaAudio: (float32: Float32Array) => void;
   onCorrection: (original: string, corrected: string, type: string) => void;
   onFunctionCall: (
@@ -157,6 +158,7 @@ export class VoiceClient {
 
       case "response.done": {
         this.emmaTextBuffer = "";
+        this.config.onEmmaDone();
         break;
       }
 
