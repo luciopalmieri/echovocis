@@ -17,7 +17,21 @@ export const authOptions: NextAuthConfig = {
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false;
-      return env.isEmailAllowed(user.email);
+      if (!env.isEmailAllowed(user.email)) return false;
+
+      const { db } = await import("./db");
+      const dbUser = await db.user.upsert({
+        where: { email: user.email },
+        update: { name: user.name, image: user.image },
+        create: {
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        },
+      });
+
+      user.id = dbUser.id;
+      return true;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {

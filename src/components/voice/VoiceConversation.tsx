@@ -29,6 +29,7 @@ export function VoiceConversation({
   const currentEmmaTextRef = useRef("");
   const [error, setError] = useState<string | null>(null);
   const [isLoadingToken, setIsLoadingToken] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
 
   const playNextChunkRef = useRef<() => void>(() => {});
 
@@ -75,10 +76,11 @@ export function VoiceConversation({
       try {
         switch (name) {
           case "save_mistake": {
+            const payload = { ...args, sessionId: sessionIdRef.current || undefined };
             const res = await fetch("/api/memory", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(args),
+              body: JSON.stringify(payload),
             });
             const data = await res.json();
             return JSON.stringify(data);
@@ -158,12 +160,15 @@ export function VoiceConversation({
       }
 
       const tokenData = await tokenRes!.json();
-      const ephemeralToken = tokenData.client_secret?.value;
+      const ephemeralToken = tokenData.value;
+      const sessionId = tokenData.sessionId;
       if (!ephemeralToken) {
         setError("Invalid session token.");
         setIsLoadingToken(false);
         return;
       }
+
+      sessionIdRef.current = sessionId || null;
 
       const client = new VoiceClient({
         ephemeralToken,
@@ -171,7 +176,7 @@ export function VoiceConversation({
         targetLanguage,
         recentMistakes,
         sessionCount,
-        sessionId: "",
+        sessionId: sessionId || "",
         onStatusChange: (s) => {
           setStatus(s);
           setIsLoadingToken(false);
@@ -214,11 +219,21 @@ export function VoiceConversation({
   }, [nativeLanguage, targetLanguage, recentMistakes, sessionCount, handleEmmaAudio, handleFunctionCall]);
 
   const handleStop = useCallback(() => {
+    const currentSessionId = sessionIdRef.current;
     clientRef.current?.disconnect();
     clientRef.current = null;
     playbackQueueRef.current = [];
     isPlayingRef.current = false;
     setIsEmmaSpeaking(false);
+
+    if (currentSessionId) {
+      fetch("/api/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: currentSessionId }),
+      }).catch(() => {});
+      sessionIdRef.current = null;
+    }
   }, []);
 
   return (

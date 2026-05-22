@@ -1,13 +1,26 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 
 export async function POST() {
   const session = await auth();
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { targetLanguage: true },
+  });
+
+  const dbSession = await db.session.create({
+    data: {
+      userId: session.user.id,
+      targetLanguage: user?.targetLanguage ?? "en",
+    },
+  });
 
   const response = await fetch("https://api.x.ai/v1/realtime/client_secrets", {
     method: "POST",
@@ -30,5 +43,5 @@ export async function POST() {
   }
 
   const data = await response.json();
-  return NextResponse.json(data);
+  return NextResponse.json({ ...data, sessionId: dbSession.id });
 }
