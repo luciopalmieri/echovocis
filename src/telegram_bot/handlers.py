@@ -119,10 +119,57 @@ async def _handle_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Voice messages coming soon!")
+    async with get_db() as db:
+        user = await get_or_create_user(db, str(update.effective_user.id), update.effective_user.first_name)
+
+        if not user.onboarding_completed:
+            await update.message.reply_text("Please finish setup first. Send /start")
+            return
+
+        session = await get_or_create_session(db, user.id, user.target_language, settings.session_timeout_minutes)
+
+        voice = update.message.voice
+        audio_file = await voice.get_file()
+        audio_data = await audio_file.download_as_bytearray()
+
+        transcription = await _stt.transcribe(bytes(audio_data), language=user.target_language)
+        await save_message(db, user.id, session.id, "user", transcription, is_voice=True, telegram_file_id=voice.file_id)
+
+        mistakes = await get_recent_mistakes(db, user.id, user.target_language)
+        session_count = await get_session_count(db, user.id)
+        prompt = build_system_prompt(user, list(mistakes), session_count)
+
+        agent = create_agent(prompt)
+        agent.session_state = {
+            "user_id": user.id,
+            "session_id": session.id,
+            "target_language": user.target_language,
+        }
+
+        response = await asyncio.to_thread(agent.run, transcription)
+        emma_text = response.content
+
+        await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
+
+        audio_bytes = await _tts.synthesize(emma_text, voice=settings.tts_voice, language=user.target_language)
+        await update.message.reply_voice(audio_bytes, caption=None)
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Show text", callback_data=f"txt:{update.message.message_id}")]])
+        await update.message.reply_text("👆 Voice reply sent", reply_markup=keyboard)
+
+        context.chat_data[f"last_text:{update.message.message_id}"] = emma_text
 
 
 async def inline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("Feature coming soon!")
+
+    data = query.data
+    if data.startswith("txt:"):
+        msg_id = data.split(":")[1]
+        text = context.chat_data.get(f"last_text:{msg_id}", "Text not available")
+        await query.message.reply_text(text)
+    elif data.startswith("tts:"):
+        text = data[4:]
+        audio_bytes = await _tts.synthesize(text, voice=settings.tts_voice)
+        await query.message.reply_voice(audio_bytes)
