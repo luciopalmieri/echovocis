@@ -1,10 +1,10 @@
 from datetime import datetime, timezone, timedelta
 from typing import Sequence
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models import User, Session, Message, Mistake, Progress, Exercise
+from src.db.models import User, Session, Message, Mistake, Progress
 
 
 async def get_or_create_user(db: AsyncSession, telegram_id: str, name: str | None = None) -> User:
@@ -38,7 +38,7 @@ async def get_or_create_session(db: AsyncSession, user_id: str, target_language:
     )
     session = result.scalar_one_or_none()
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-    if session is not None and session.started_at >= cutoff:
+    if session is not None and session.started_at.replace(tzinfo=None) >= cutoff.replace(tzinfo=None):
         return session
     if session is not None:
         session.ended_at = datetime.now(timezone.utc)
@@ -76,11 +76,9 @@ async def save_message(db: AsyncSession, user_id: str, session_id: str, role: st
 async def save_mistake(db: AsyncSession, user_id: str, original: str, corrected: str, mistake_type: str, target_language: str, session_id: str | None = None) -> Mistake:
     result = await db.execute(
         select(Mistake).where(
-            and_(
-                Mistake.user_id == user_id,
-                Mistake.target_language == target_language,
-                Mistake.original == original,
-            )
+            Mistake.user_id == user_id,
+            Mistake.target_language == target_language,
+            Mistake.original == original,
         )
     )
     existing = result.scalar_one_or_none()
@@ -119,7 +117,9 @@ async def save_progress(db: AsyncSession, user_id: str, target_language: str, se
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     result = await db.execute(
         select(Progress).where(
-            and_(Progress.user_id == user_id, Progress.target_language == target_language, Progress.date == today)
+            Progress.user_id == user_id,
+            Progress.target_language == target_language,
+            Progress.date == today,
         )
     )
     progress = result.scalar_one_or_none()
@@ -149,7 +149,9 @@ async def _calculate_streak(db: AsyncSession, user_id: str, target_language: str
     yesterday = today - timedelta(days=1)
     result = await db.execute(
         select(Progress).where(
-            and_(Progress.user_id == user_id, Progress.target_language == target_language, Progress.date == yesterday)
+            Progress.user_id == user_id,
+            Progress.target_language == target_language,
+            Progress.date == yesterday,
         )
     )
     yesterday_progress = result.scalar_one_or_none()
@@ -165,7 +167,7 @@ async def get_session_count(db: AsyncSession, user_id: str) -> int:
     return result.scalar_one()
 
 
-async def get_mistake_stats(db: AsyncSession, user_id: str, target_language: str) -> dict:
+async def get_mistake_stats(db: AsyncSession, user_id: str, target_language: str) -> dict[str, int]:
     result = await db.execute(
         select(Mistake.type, func.count().label("count"))
         .where(Mistake.user_id == user_id, Mistake.target_language == target_language)
