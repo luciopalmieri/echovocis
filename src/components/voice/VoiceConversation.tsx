@@ -33,6 +33,71 @@ export function VoiceConversation({
   const [isLoadingToken, setIsLoadingToken] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
   const onCorrectionRef = useRef<(original: string, corrected: string, type: string) => void>(() => {});
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const savedCountsRef = useRef({ sentencesSpoken: 0, mistakesCount: 0, correctionsAccepted: 0 });
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [entries, isEmmaSpeaking]);
+
+  const flushProgress = useCallback(() => {
+    const current = entriesRef.current;
+    const totalSentences = current.filter((e) => e.role === "user").length;
+    const totalMistakes = current.filter((e) => e.correction).length;
+
+    const deltaSentences = totalSentences - savedCountsRef.current.sentencesSpoken;
+    const deltaMistakes = totalMistakes - savedCountsRef.current.mistakesCount;
+    const deltaCorrections = deltaMistakes;
+
+    if (deltaSentences <= 0 && deltaMistakes <= 0) return;
+
+    savedCountsRef.current = {
+      sentencesSpoken: totalSentences,
+      mistakesCount: totalMistakes,
+      correctionsAccepted: totalMistakes,
+    };
+
+    fetch("/api/progress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sentencesSpoken: Math.max(0, deltaSentences),
+        mistakesCount: Math.max(0, deltaMistakes),
+        correctionsAccepted: Math.max(0, deltaCorrections),
+        targetLanguage,
+      }),
+    }).catch(() => {
+      savedCountsRef.current = {
+        sentencesSpoken: savedCountsRef.current.sentencesSpoken - deltaSentences,
+        mistakesCount: savedCountsRef.current.mistakesCount - deltaMistakes,
+        correctionsAccepted: savedCountsRef.current.correctionsAccepted - deltaCorrections,
+      };
+    });
+  }, [targetLanguage]);
+
+  useEffect(() => {
+    if (status === "connected") {
+      progressIntervalRef.current = setInterval(flushProgress, 30000);
+    } else {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+    };
+  }, [status, flushProgress]);
 
   const playNextChunkRef = useRef<() => void>(() => {});
 
@@ -114,13 +179,7 @@ export function VoiceConversation({
           }
 
           case "save_progress": {
-            const res = await fetch("/api/progress", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(args),
-            });
-            const data = await res.json();
-            return JSON.stringify(data);
+            return JSON.stringify({ ok: true, note: "tracked automatically" });
           }
 
           default:
@@ -179,6 +238,7 @@ export function VoiceConversation({
       }
 
       sessionIdRef.current = sessionId || null;
+      savedCountsRef.current = { sentencesSpoken: 0, mistakesCount: 0, correctionsAccepted: 0 };
 
       const client = new VoiceClient({
         ephemeralToken,
@@ -211,6 +271,18 @@ export function VoiceConversation({
             const id = `emma-${Date.now()}`;
             currentEmmaIdRef.current = id;
             return [...prev, { id, role: "emma" as const, text }];
+          });
+        },
+        onEmmaTranscription: (text) => {
+          setEntries((prev) => {
+            const lastEmmaIdx = [...prev].reverse().findIndex((e) => e.role === "emma");
+            if (lastEmmaIdx === -1) {
+              return [...prev, { id: `emma-stt-${Date.now()}`, role: "emma" as const, text }];
+            }
+            const actualIdx = prev.length - 1 - lastEmmaIdx;
+            return prev.map((e, i) =>
+              i === actualIdx ? { ...e, text } : e
+            );
           });
         },
         onEmmaDone: () => {
@@ -254,7 +326,8 @@ export function VoiceConversation({
 
   const handleStop = useCallback(() => {
     const currentSessionId = sessionIdRef.current;
-    const currentEntries = entriesRef.current;
+
+    flushProgress();
 
     clientRef.current?.disconnect();
     clientRef.current = null;
@@ -263,36 +336,21 @@ export function VoiceConversation({
     setIsEmmaSpeaking(false);
 
     if (currentSessionId) {
-      const sentencesSpoken = currentEntries.filter((e) => e.role === "user").length;
-      const mistakesCount = currentEntries.filter((e) => e.correction).length;
-      const correctionsAccepted = mistakesCount;
-
       fetch("/api/session/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: currentSessionId }),
       }).catch(() => {});
 
-      if (sentencesSpoken > 0) {
-        fetch("/api/progress", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sentencesSpoken,
-            mistakesCount,
-            correctionsAccepted,
-            targetLanguage,
-          }),
-        }).catch(() => {});
-      }
-
       sessionIdRef.current = null;
     }
-  }, [targetLanguage]);
+
+    savedCountsRef.current = { sentencesSpoken: 0, mistakesCount: 0, correctionsAccepted: 0 };
+  }, [flushProgress]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <TranscriptPanel entries={entries} isEmmaSpeaking={isEmmaSpeaking && entries.length > 0} />
       </div>
 
@@ -308,7 +366,7 @@ export function VoiceConversation({
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-8 border-t border-gray-100 bg-white px-4 py-6">
+      <div className="flex shrink-0 items-center justify-center gap-8 border-t border-gray-100 bg-white px-4 py-6 pb-[env(safe-area-inset-bottom,24px)]">
         <VoiceButton
           status={isLoadingToken ? "connecting" : status}
           onStart={handleStart}

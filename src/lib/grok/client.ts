@@ -1,5 +1,5 @@
 import { GROK_TOOLS } from "./tools";
-import { float32ToBase64PCM16, base64PCM16ToFloat32, SAMPLE_RATE } from "./audio";
+import { float32ToBase64PCM16, base64PCM16ToFloat32, SAMPLE_RATE, encodeWAV } from "./audio";
 import { buildSystemPrompt } from "./prompt";
 
 export type ConnectionStatus =
@@ -18,6 +18,7 @@ export interface VoiceClientConfig {
   onStatusChange: (status: ConnectionStatus) => void;
   onUserTranscript: (text: string) => void;
   onEmmaText: (text: string) => void;
+  onEmmaTranscription: (text: string) => void;
   onEmmaDone: () => void;
   onEmmaAudio: (float32: Float32Array) => void;
   onCorrection: (original: string, corrected: string, type: string) => void;
@@ -37,6 +38,7 @@ export class VoiceClient {
   private config: VoiceClientConfig;
   private pendingFunctionCalls: Map<string, { name: string; args: string }> = new Map();
   private emmaTextBuffer = "";
+  private emmaAudioChunks: Float32Array[] = [];
   private currentPlaybackSource: AudioBufferSourceNode | null = null;
   private playbackQueue: Float32Array[] = [];
   private isPlaying = false;
@@ -127,6 +129,7 @@ export class VoiceClient {
         type: "session.update",
         session: {
           voice: "ara",
+          modalities: ["text", "audio"],
           instructions,
           turn_detection: {
             type: "server_vad",
@@ -145,18 +148,21 @@ export class VoiceClient {
       case "response.output_audio.delta": {
         const delta = event.delta as string;
         const float32 = base64PCM16ToFloat32(delta);
+        this.emmaAudioChunks.push(float32);
         this.config.onEmmaAudio(float32);
         break;
       }
 
-      case "response.text.delta": {
-        const delta = event.delta as string;
+      case "response.text.delta":
+      case "response.output_text.delta": {
+        const delta = (event.delta as string) || (event.text as string) || "";
         this.emmaTextBuffer += delta;
         this.config.onEmmaText(this.emmaTextBuffer);
         break;
       }
 
       case "response.done": {
+        this.transcribeEmmaAudio();
         this.emmaTextBuffer = "";
         this.config.onEmmaDone();
         break;
@@ -205,6 +211,41 @@ export class VoiceClient {
     this.ws.send(JSON.stringify({ type: "response.create" }));
   }
 
+  private async transcribeEmmaAudio(): Promise<void> {
+    const chunks = this.emmaAudioChunks;
+    this.emmaAudioChunks = [];
+
+    if (chunks.length === 0) return;
+
+    try {
+      const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+      const combined = new Float32Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      const wav = encodeWAV(combined, SAMPLE_RATE);
+      const formData = new FormData();
+      formData.append("file", wav, "emma.wav");
+
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.text) {
+          this.config.onEmmaTranscription(data.text);
+        }
+      }
+    } catch {
+      // silently fail — audio already played
+    }
+  }
+
   disconnect(): void {
     if (this.processor) {
       this.processor.disconnect();
@@ -223,6 +264,7 @@ export class VoiceClient {
       this.ws = null;
     }
     this.earlyAudioBuffer = [];
+    this.emmaAudioChunks = [];
     this.config.onStatusChange("disconnected");
   }
 }
