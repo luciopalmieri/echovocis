@@ -27,6 +27,8 @@ export function VoiceConversation({
   const playbackQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
   const currentEmmaTextRef = useRef("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoadingToken, setIsLoadingToken] = useState(false);
 
   const handleFunctionCall = useCallback(
     async (
@@ -127,16 +129,30 @@ export function VoiceConversation({
   }, [playNextChunk]);
 
   const handleStart = useCallback(async () => {
+    setError(null);
+    setIsLoadingToken(true);
     try {
-      const tokenRes = await fetch("/api/session", { method: "POST" });
-      if (!tokenRes.ok) {
-        console.error("Failed to get ephemeral token");
-        return;
+      let tokenRes: Response;
+      let retries = 0;
+      const maxRetries = 3;
+
+      while (retries < maxRetries) {
+        tokenRes = await fetch("/api/session", { method: "POST" });
+        if (tokenRes.ok) break;
+        retries++;
+        if (retries >= maxRetries) {
+          setError("Failed to connect. Please try again.");
+          setIsLoadingToken(false);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retries)));
       }
-      const tokenData = await tokenRes.json();
+
+      const tokenData = await tokenRes!.json();
       const ephemeralToken = tokenData.client_secret?.value;
       if (!ephemeralToken) {
-        console.error("No token in response");
+        setError("Invalid session token.");
+        setIsLoadingToken(false);
         return;
       }
 
@@ -147,15 +163,17 @@ export function VoiceConversation({
         recentMistakes,
         sessionCount,
         sessionId: "",
-        onStatusChange: setStatus,
+        onStatusChange: (s) => {
+          setStatus(s);
+          setIsLoadingToken(false);
+          if (s === "error") {
+            setError("Connection lost. Tap to reconnect.");
+          }
+        },
         onUserTranscript: (text) => {
           setEntries((prev) => [
             ...prev,
-            {
-              id: `user-${Date.now()}`,
-              role: "user",
-              text,
-            },
+            { id: `user-${Date.now()}`, role: "user", text },
           ]);
         },
         onEmmaText: (text) => {
@@ -164,9 +182,7 @@ export function VoiceConversation({
         onEmmaAudio: handleEmmaAudio,
         onCorrection: (original, corrected, type) => {
           setEntries((prev) => {
-            const lastEmma = [...prev]
-              .reverse()
-              .find((e) => e.role === "emma");
+            const lastEmma = [...prev].reverse().find((e) => e.role === "emma");
             if (lastEmma) {
               return prev.map((e) =>
                 e.id === lastEmma.id
@@ -183,8 +199,8 @@ export function VoiceConversation({
       clientRef.current = client;
       await client.connect();
     } catch (err) {
-      console.error("Failed to start session:", err);
-      setStatus("error");
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setIsLoadingToken(false);
     }
   }, [nativeLanguage, targetLanguage, recentMistakes, sessionCount, handleEmmaAudio, handleFunctionCall]);
 
@@ -202,8 +218,24 @@ export function VoiceConversation({
         <TranscriptPanel entries={entries} isEmmaSpeaking={isEmmaSpeaking && entries.length > 0} />
       </div>
 
+      {error && (
+        <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-2 text-red-500 underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-center gap-8 border-t border-gray-100 bg-white px-4 py-6">
-        <VoiceButton status={status} onStart={handleStart} onStop={handleStop} />
+        <VoiceButton
+          status={isLoadingToken ? "connecting" : status}
+          onStart={handleStart}
+          onStop={handleStop}
+        />
       </div>
     </div>
   );
