@@ -95,7 +95,9 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
 
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Hear audio", callback_data=f"tts:{emma_text[:200]}")]])
+        context.chat_data[f"last_text:{update.message.message_id}"] = emma_text
+        context.chat_data["target_language"] = user.target_language
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Hear audio", callback_data=f"tts:{update.message.message_id}")]])
         await update.message.reply_text(emma_text, reply_markup=keyboard)
 
 
@@ -154,10 +156,10 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         audio_bytes = await _tts.synthesize(emma_text, voice=settings.tts_voice, language=user.target_language)
         await update.message.reply_voice(audio_bytes, caption=None)
 
+        context.chat_data[f"last_text:{update.message.message_id}"] = emma_text
+        context.chat_data["target_language"] = user.target_language
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Show text", callback_data=f"txt:{update.message.message_id}")]])
         await update.message.reply_text("👆 Voice reply sent", reply_markup=keyboard)
-
-        context.chat_data[f"last_text:{update.message.message_id}"] = emma_text
 
 
 async def inline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -165,11 +167,14 @@ async def inline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
 
     data = query.data
+    target_language = context.chat_data.get("target_language", "en")
     if data.startswith("txt:"):
         msg_id = data.split(":")[1]
         text = context.chat_data.get(f"last_text:{msg_id}", "Text not available")
         await query.message.reply_text(text)
     elif data.startswith("tts:"):
-        text = data[4:]
-        audio_bytes = await _tts.synthesize(text, voice=settings.tts_voice)
-        await query.message.reply_voice(audio_bytes)
+        msg_id = data.split(":")[1]
+        text = context.chat_data.get(f"last_text:{msg_id}", "Text not available")
+        if text != "Text not available":
+            audio_bytes = await _tts.synthesize(text, voice=settings.tts_voice, language=target_language)
+            await query.message.reply_voice(audio_bytes)
