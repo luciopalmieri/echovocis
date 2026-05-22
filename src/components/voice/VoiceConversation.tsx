@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { VoiceClient, ConnectionStatus } from "@/lib/grok/client";
 import { VoiceButton } from "./VoiceButton";
 import { TranscriptPanel, TranscriptEntry } from "./TranscriptPanel";
@@ -30,10 +30,42 @@ export function VoiceConversation({
   const [error, setError] = useState<string | null>(null);
   const [isLoadingToken, setIsLoadingToken] = useState(false);
 
+  const playNextChunkRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    playNextChunkRef.current = () => {
+      if (playbackQueueRef.current.length === 0) {
+        isPlayingRef.current = false;
+        setIsEmmaSpeaking(false);
+        return;
+      }
+
+      isPlayingRef.current = true;
+      const chunk = playbackQueueRef.current.shift()!;
+      const ctx = audioContextRef.current!;
+
+      const buffer = ctx.createBuffer(1, chunk.length, 24000);
+      buffer.getChannelData(0).set(chunk);
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.onended = () => {
+        playNextChunkRef.current();
+      };
+      source.start();
+    };
+  });
+
+  const playNextChunk = useCallback(() => {
+    playNextChunkRef.current();
+  }, []);
+
   const handleFunctionCall = useCallback(
     async (
       name: string,
       args: Record<string, unknown>,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       _callId: string
     ): Promise<string> => {
       if (!isKnownFunction(name)) {
@@ -90,29 +122,6 @@ export function VoiceConversation({
     },
     [targetLanguage]
   );
-
-  const playNextChunk = useCallback(() => {
-    if (playbackQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      setIsEmmaSpeaking(false);
-      return;
-    }
-
-    isPlayingRef.current = true;
-    const chunk = playbackQueueRef.current.shift()!;
-    const ctx = audioContextRef.current!;
-
-    const buffer = ctx.createBuffer(1, chunk.length, 24000);
-    buffer.getChannelData(0).set(chunk);
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.onended = () => {
-      playNextChunk();
-    };
-    source.start();
-  }, []);
 
   const handleEmmaAudio = useCallback((float32: Float32Array) => {
     setIsEmmaSpeaking(true);

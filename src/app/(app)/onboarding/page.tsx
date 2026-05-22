@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { LanguageFlag, SUPPORTED_LANGUAGES } from "@/components/LanguageFlag";
+import { SUPPORTED_LANGUAGES } from "@/components/LanguageFlag";
 
 export default async function OnboardingPage() {
   const session = await auth();

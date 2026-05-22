@@ -10,7 +10,7 @@ describe("env", () => {
     delete process.env.GOOGLE_CLIENT_ID;
     try {
       const { env } = await import("@/lib/env");
-      env.DATABASE_URL;
+      void env.DATABASE_URL;
       expect.fail("Expected an error to be thrown");
     } catch (e) {
       expect((e as Error).message).toContain("Missing environment variable");

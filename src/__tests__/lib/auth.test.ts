@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("next-auth", () => ({
-  default: (config: unknown) => ({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  default: (_config: unknown) => ({
     auth: vi.fn(),
     handlers: { GET: vi.fn(), POST: vi.fn() },
     signIn: vi.fn(),

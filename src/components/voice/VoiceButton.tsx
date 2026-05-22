@@ -11,7 +11,6 @@ interface VoiceButtonProps {
 export function VoiceButton({ status, onStart, onStop }: VoiceButtonProps) {
   const isActive = status === "connected";
   const isConnecting = status === "connecting";
-  const isDisconnected = status === "disconnected" || status === "error";
 
   return (
     <div className="flex flex-col items-center gap-2">
