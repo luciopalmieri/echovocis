@@ -13,7 +13,6 @@ class Settings(BaseSettings):
 
     tts_provider: str = "xai"
     tts_voice: str = "ara"
-    tts_language: str = "en"
 
     telegram_bot_token: str = ""
 

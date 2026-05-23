@@ -186,7 +186,6 @@ XAI_API_KEY=xai-...
 # TTS
 TTS_PROVIDER=xai
 TTS_VOICE=ara
-TTS_LANGUAGE=en
 
 # Telegram
 TELEGRAM_BOT_TOKEN=...

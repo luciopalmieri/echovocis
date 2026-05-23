@@ -13,5 +13,4 @@ def create_agent(system_prompt: str) -> Agent:
         tools=get_tools(),
         instructions=[system_prompt],
         markdown=False,
-        show_tool_calls=False,
     )

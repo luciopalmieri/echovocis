@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 
 from src.providers.base import TTSProvider
@@ -9,8 +11,11 @@ class XaiTTS(TTSProvider):
         self._url = "https://api.x.ai/v1/tts"
 
     async def synthesize(self, text: str, voice: str = "ara", language: str = "en") -> bytes:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
+        return await asyncio.to_thread(self._synthesize_sync, text, voice, language)
+
+    def _synthesize_sync(self, text: str, voice: str = "ara", language: str = "en") -> bytes:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
                 self._url,
                 headers={
                     "Authorization": f"Bearer {self._api_key}",
