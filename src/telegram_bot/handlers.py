@@ -91,6 +91,9 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         }
 
         response = await asyncio.to_thread(agent.run, text)
+        logger.info(f"Agent response: tools_used={getattr(response, 'tools', None)} messages={len(response.messages) if hasattr(response, 'messages') else '?'}")
+        for msg in getattr(response, 'messages', []) or []:
+            logger.info(f"  Agent message: role={getattr(msg, 'role', '?')} tool_calls={getattr(msg, 'tool_calls', None)} content_preview={str(getattr(msg, 'content', ''))[:150]}")
         emma_text = response.content
 
         await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
@@ -149,6 +152,9 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         }
 
         response = await asyncio.to_thread(agent.run, transcription)
+        logger.info(f"Agent response: tools_used={getattr(response, 'tools', None)} messages={len(response.messages) if hasattr(response, 'messages') else '?'}")
+        for msg in getattr(response, 'messages', []) or []:
+            logger.info(f"  Agent message: role={getattr(msg, 'role', '?')} tool_calls={getattr(msg, 'tool_calls', None)} content_preview={str(getattr(msg, 'content', ''))[:150]}")
         emma_text = response.content
 
         await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
