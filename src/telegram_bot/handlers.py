@@ -27,6 +27,15 @@ _stt = XaiSTT(api_key=settings.xai_api_key)
 _tts = XaiTTS(api_key=settings.xai_api_key)
 
 
+_PRIVATE_MSG = "This is a private service. Authorization is required to use this bot. Please contact the owner for access."
+
+
+def _is_allowed(update: Update) -> bool:
+    if settings.is_telegram_allowed(str(update.effective_user.id)):
+        return True
+    return False
+
+
 @asynccontextmanager
 async def get_db():
     async with async_session() as db:
@@ -47,6 +56,9 @@ async def _get_user_session(update: Update, db: AsyncSession):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update):
+        await update.message.reply_text(_PRIVATE_MSG)
+        return
     async with get_db() as db:
         tg_user = update.effective_user
         user = await get_or_create_user(db, str(tg_user.id), tg_user.first_name)
@@ -67,6 +79,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update):
+        await update.message.reply_text(_PRIVATE_MSG)
+        return
     async with get_db() as db:
         user = await get_or_create_user(db, str(update.effective_user.id), update.effective_user.first_name)
 
@@ -124,6 +139,9 @@ async def _handle_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update):
+        await update.message.reply_text(_PRIVATE_MSG)
+        return
     async with get_db() as db:
         user = await get_or_create_user(db, str(update.effective_user.id), update.effective_user.first_name)
 
