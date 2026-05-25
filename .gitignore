@@ -55,3 +55,6 @@ dist/
 
 # Agno
 .agno/
+
+# Superpowers cache
+.superpowers/
