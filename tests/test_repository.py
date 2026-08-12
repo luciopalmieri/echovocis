@@ -9,6 +9,7 @@ from src.db.repository import (
     get_recent_mistakes,
     get_or_create_session,
     save_progress,
+    update_user_languages,
 )
 
 
@@ -98,3 +99,24 @@ async def test_save_progress_updates_existing_same_day(db):
     assert p2.sentences_spoken == 10
     assert p2.mistakes_count == 4
     assert p2.corrections_accepted == 3
+
+
+async def test_update_user_languages_sets_pair_and_completes_onboarding(db):
+    user = await get_or_create_user(db, "tg_123", "Test")
+    assert user.onboarding_completed is False
+
+    updated = await update_user_languages(db, user.id, "it", "en")
+
+    assert updated.native_language == "it"
+    assert updated.target_language == "en"
+    assert updated.onboarding_completed is True
+
+
+async def test_update_user_languages_overwrites_existing_pair(db):
+    user = await get_or_create_user(db, "tg_123", "Test")
+    await update_user_languages(db, user.id, "a random sentence", "en")
+
+    updated = await update_user_languages(db, user.id, "it", "en")
+
+    assert updated.native_language == "it"
+    assert updated.target_language == "en"
