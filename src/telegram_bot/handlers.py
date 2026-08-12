@@ -21,6 +21,7 @@ from src.db.repository import (
 from src.db.session import async_session
 from src.providers.stt_xai import XaiSTT
 from src.providers.tts_xai import XaiTTS
+from src.telegram_bot.help import build_help_message
 from src.telegram_bot.languages import SUPPORTED_LANGUAGES, parse_lang_callback
 from src.telegram_bot.onboarding import (
     OnboardingDeps,
@@ -167,6 +168,16 @@ async def language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         await show_languages_status(responder, user.native_language, user.target_language)
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update):
+        await update.message.reply_text(_PRIVATE_MSG)
+        return
+    async with get_db() as db:
+        user = await get_or_create_user(db, str(update.effective_user.id), update.effective_user.first_name)
+        native = user.native_language if user.onboarding_completed else None
+        await update.message.reply_text(build_help_message(native))
 
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
