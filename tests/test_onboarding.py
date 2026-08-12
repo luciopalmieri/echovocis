@@ -2,6 +2,7 @@ from src.telegram_bot.onboarding import (
     OnboardingDeps,
     Responder,
     handle_lang_action,
+    show_languages_status,
     synthesize_voice_or_none,
 )
 
@@ -103,4 +104,13 @@ async def test_confirm_action_persists_and_welcomes():
     await handle_lang_action("confirm", "it", "en", deps=_deps(r, _FakeTTS()))
     assert _persist.calls == [("it", "en")]
     assert any("Tutto pronto" in e[1] for e in r.events if e[0] == "text")
+
+
+async def test_show_languages_status_handles_legacy_invalid_codes():
+    r = _FakeResponder()
+    await show_languages_status(r, "are you funzionando?", "en")
+    text_event = next(e for e in r.events if e[0] == "text")
+    markup = text_event[2]
+    buttons = [b["callback_data"] for row in markup.to_dict()["inline_keyboard"] for b in row]
+    assert "lang_restart" in buttons
 

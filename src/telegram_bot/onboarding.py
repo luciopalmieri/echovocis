@@ -26,7 +26,9 @@ class OnboardingDeps:
 
 
 def _label(code: str) -> str:
-    info = SUPPORTED_LANGUAGES[code]
+    info = SUPPORTED_LANGUAGES.get(code)
+    if info is None:
+        return f'⚠️ "{code}"'
     return f"{info.flag} {info.label}"
 
 
