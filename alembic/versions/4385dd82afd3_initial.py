@@ -107,18 +107,20 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['mistake_id'], ['mistakes.id'], ),
     sa.PrimaryKeyConstraint('exercise_id', 'mistake_id')
     )
-    op.drop_index(op.f('_ExerciseToMistake_B_index'), table_name='_ExerciseToMistake')
-    op.drop_table('_ExerciseToMistake')
-    op.drop_table('Exercise')
-    op.drop_index(op.f('Mistake_userId_targetLanguage_lastSeenAt_idx'), table_name='Mistake')
-    op.drop_table('Mistake')
-    op.drop_index(op.f('Session_userId_startedAt_idx'), table_name='Session')
-    op.drop_table('Session')
-    op.drop_index(op.f('Progress_userId_targetLanguage_date_key'), table_name='Progress')
-    op.drop_index(op.f('Progress_userId_targetLanguage_idx'), table_name='Progress')
-    op.drop_table('Progress')
-    op.drop_index(op.f('User_email_key'), table_name='User')
-    op.drop_table('User')
+    # Legacy Prisma-era tables — IF EXISTS guard so the migration also runs
+    # cleanly on a fresh database (not just as an in-place schema migration).
+    op.execute('DROP INDEX IF EXISTS "_ExerciseToMistake_B_index"')
+    op.execute('DROP TABLE IF EXISTS "_ExerciseToMistake"')
+    op.execute('DROP TABLE IF EXISTS "Exercise"')
+    op.execute('DROP INDEX IF EXISTS "Mistake_userId_targetLanguage_lastSeenAt_idx"')
+    op.execute('DROP TABLE IF EXISTS "Mistake"')
+    op.execute('DROP INDEX IF EXISTS "Session_userId_startedAt_idx"')
+    op.execute('DROP TABLE IF EXISTS "Session"')
+    op.execute('DROP INDEX IF EXISTS "Progress_userId_targetLanguage_date_key"')
+    op.execute('DROP INDEX IF EXISTS "Progress_userId_targetLanguage_idx"')
+    op.execute('DROP TABLE IF EXISTS "Progress"')
+    op.execute('DROP INDEX IF EXISTS "User_email_key"')
+    op.execute('DROP TABLE IF EXISTS "User"')
     # ### end Alembic commands ###
 
 

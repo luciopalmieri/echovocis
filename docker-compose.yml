@@ -1,21 +1,33 @@
+# EchoVocis stack.
+# Project name pinned so container / volume / network prefixes are `echovocis-*`
+# regardless of the install path on the VPS.
+# No HTTP service: the bot uses Telegram as its only interface, so it is NOT
+# attached to the shared `kimera_web` network and has no Caddy entry.
+name: echovocis
+
 services:
   db:
     image: postgres:17
+    restart: unless-stopped
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: echovocis
       POSTGRES_USER: echovocis
       POSTGRES_PASSWORD: ${DB_PASSWORD:-echovocis}
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U echovocis"]
       interval: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   bot:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -24,6 +36,12 @@ services:
       DATABASE_URL: postgresql+asyncpg://echovocis:${DB_PASSWORD:-echovocis}@db:5432/echovocis
     command: >
       sh -c "uv run alembic upgrade head && uv run python -m src.main"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:
+    name: echovocis_pgdata
