@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from openai import OpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import TimedOut
 from telegram.ext import ContextTypes
 
 from src.agent.emma import create_agent
@@ -134,6 +135,21 @@ async def _ensure_onboarded(update: Update, user) -> bool:
     return False
 
 
+async def _fetch_voice_bytes(voice) -> bytes | None:
+    """Download a voice message, retrying once on network timeout.
+
+    Returns the audio bytes, or None if the download timed out twice so the
+    caller can tell the user to retry instead of failing silently.
+    """
+    for attempt in (1, 2):
+        try:
+            audio_file = await voice.get_file()
+            return bytes(await audio_file.download_as_bytearray())
+        except TimedOut:
+            logger.warning("Voice download timed out (attempt %d/2)", attempt)
+    return None
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update):
         await update.message.reply_text(_PRIVATE_MSG)
@@ -231,10 +247,14 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         session = await get_or_create_session(db, user.id, user.target_language, settings.session_timeout_minutes)
 
         voice = update.message.voice
-        audio_file = await voice.get_file()
-        audio_data = await audio_file.download_as_bytearray()
+        audio_data = await _fetch_voice_bytes(voice)
+        if audio_data is None:
+            await update.message.reply_text(
+                "⏳ I couldn't download your voice message in time (network timeout). Please try again."
+            )
+            return
 
-        transcription = await _stt.transcribe(bytes(audio_data), language=user.target_language)
+        transcription = await _stt.transcribe(audio_data, language=user.target_language)
         await save_message(db, user.id, session.id, "user", transcription, is_voice=True, telegram_file_id=voice.file_id)
 
         mistakes = await get_recent_mistakes(db, user.id, user.target_language)
