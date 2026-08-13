@@ -254,12 +254,11 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await save_message(db, user.id, session.id, "emma", emma_text, is_voice=False)
 
         audio_bytes = await _tts.synthesize(emma_text, voice=settings.tts_voice, language=user.target_language)
-        await update.message.reply_voice(audio_bytes, caption=None)
 
         context.chat_data[f"last_text:{update.message.message_id}"] = emma_text
         context.chat_data["target_language"] = user.target_language
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Show text", callback_data=f"txt:{update.message.message_id}")]])
-        await update.message.reply_text("👆 Voice reply sent", reply_markup=keyboard)
+        await update.message.reply_voice(audio_bytes, reply_markup=keyboard)
 
 
 async def inline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
