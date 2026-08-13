@@ -288,3 +288,16 @@ async def inline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if text != "Text not available":
             audio_bytes = await _tts.synthesize(text, voice=settings.tts_voice, language=target_language)
             await query.message.reply_voice(audio_bytes)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Unhandled exception while handling an update", exc_info=context.error)
+    chat = getattr(update, "effective_chat", None) if update is not None else None
+    if chat is not None:
+        try:
+            await context.bot.send_message(
+                chat.id,
+                "⚠️ Something went wrong while processing your message. Please try again.",
+            )
+        except Exception:  # noqa: BLE001, S110 - the error handler must never crash
+            pass
